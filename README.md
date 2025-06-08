@@ -1,3 +1,5 @@
+# M24C08 Library for Pico SDK (RP2040)
+
 _Update (6/7/25): This library should work on RP2350 as well but has not yet been tested._
 
 The M24C08 is an 8 Kbit I2C EEPROM from STMicroelectronics. It is organized as 1024 bytes with a page size of 16 bytes.
