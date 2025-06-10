@@ -20,6 +20,9 @@ pico_sdk_init()
 
 #set(CMOTION_SOURCE_DIR ${CMOTION_DIR}/source/)
 
+add_library(m24c08 m24c08.cpp)
+target_link_libraries(m24c08 hardware_i2c)
+
 add_subdirectory(test)
 
 
