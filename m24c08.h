@@ -14,6 +14,8 @@
 
 void m24c08_init(i2c_inst_t *i2c);
 
+bool m24c08_write(i2c_inst_t *i2c, uint16_t addr, const uint8_t data);
+
 bool m24c08_write(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t len);
 
 bool m24c08_update(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t len);

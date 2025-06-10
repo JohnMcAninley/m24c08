@@ -3,7 +3,7 @@
 #include "hardware/i2c.h"
 #include "pico/time.h"
 
-#include "drivers/m24c08.h"
+#include "m24c08.h"
 
 
 void m24c08_init(i2c_inst_t *i2c) {
@@ -32,7 +32,22 @@ bool write_address(i2c_inst_t *i2c, uint16_t addr)
   uint8_t device_select = deviceSelect(addr);
   uint8_t addr_l = address(addr);
   int ret = i2c_write_blocking(i2c, device_select, &addr_l, 1, true);
+
   return ret == 1;
+}
+
+bool m24c08_write(i2c_inst_t *i2c, uint16_t addr, const uint8_t data)
+{
+  if (addr > M24C08_TOTAL_SIZE - 1) return false;
+
+  // Write device select and address to begin page write
+  uint8_t device_select = deviceSelect(addr);
+  uint8_t addr_l = address(addr);
+  uint8_t msg[2] = {addr_l, data};
+
+  int ret = i2c_write_blocking(i2c, device_select, msg, 2, false);
+
+  return ret == 2;
 }
 
 bool m24c08_write(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t len)
@@ -44,16 +59,17 @@ bool m24c08_write(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t le
     // Write device select and address to begin page write
     uint8_t device_select = deviceSelect(addr);
     uint8_t addr_l = address(addr);
-    int ret = i2c_write_blocking(i2c, device_select, &addr_l, 1, true);
-    if (ret != 1) return false;
 
     // Calculate how many bytes we can write in current block
     uint8_t offset = get_page_offset(addr);
     size_t chunk = M24C08_PAGE_SIZE - offset;
     if (chunk > len) chunk = len;
 
-    ret = i2c_write_blocking(i2c, device_select, data, chunk, false);
-    if (ret != chunk) return false; // Write failed
+    uint8_t msg[chunk + 1];
+    msg[0] = addr_l;
+    memcpy(msg + 1, data, chunk);
+    int ret = i2c_write_timeout_us(i2c, device_select, msg, chunk + 1, false, 15000);
+    if (ret != chunk + 1) return false; // Write failed
 
     // Wait for the EEPROM internal write cycle to complete (~5 ms typical, 10 ms safe)
     busy_wait_ms(EEPROM_WRITE_CYCLE_DELAY_MS);
@@ -75,8 +91,6 @@ bool m24c08_update(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t l
     // Write device select and address to begin page write
     uint8_t device_select = deviceSelect(addr);
     uint8_t addr_l = address(addr);
-    int ret = i2c_write_blocking(i2c, device_select, &addr_l, 1, true);
-    if (ret != 1) return false;
 
     // Calculate how many bytes we can write in current block
     uint8_t offset = get_page_offset(addr);
@@ -84,12 +98,16 @@ bool m24c08_update(i2c_inst_t *i2c, uint16_t addr, const uint8_t *data, size_t l
     if (chunk > len) chunk = len;
 
     uint8_t buf[chunk];
-    if (!m24c08_read(i2c, addr, buf, len)) return false;
+    if (!m24c08_read(i2c, addr, buf, chunk)) return false;
 
     if (memcmp(data, buf, chunk))
     {
-      ret = i2c_write_blocking(i2c, device_select, data, chunk, false);
-      if (ret != chunk) return false; // Write failed
+      uint8_t msg[chunk + 1];
+      msg[0] = addr_l;
+      memcpy(msg + 1, data, chunk);
+      
+      int ret = i2c_write_timeout_us(i2c, device_select, msg, chunk + 1, false, 15000);
+      if (ret != chunk + 1) return false; // Write failed
 
       // Wait for the EEPROM internal write cycle to complete (~5 ms typical, 10 ms safe)
       busy_wait_ms(EEPROM_WRITE_CYCLE_DELAY_MS);
@@ -111,12 +129,12 @@ bool m24c08_read(i2c_inst_t *i2c, uint16_t addr, uint8_t *dst, size_t len)
 
   uint8_t device_select = deviceSelect(addr);
   uint8_t addr_l = address(addr);
-  int ret = i2c_write_blocking(i2c, device_select, &addr_l, 1, true);
+  
+  int ret = i2c_write_timeout_us(i2c, device_select, &addr_l, 1, true, 15000);
   if (ret != 1) return false;
 
   // sequential read
-  ret = i2c_read_blocking(i2c, device_select, dst, len, false);
-  if (ret != len) return false;
+  ret = i2c_read_timeout_us(i2c, device_select, dst, len, false, 15000);
 
-  return true;
+  return ret == len;
 }
