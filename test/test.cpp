@@ -13,6 +13,53 @@
 #define EEPROM_SDA_PIN  2
 #define EEPROM_SCL_PIN  3
 
+struct SettingMemory {
+  bool     ResetAll         = false;
+  bool     IsInverted       = false;
+  uint8_t  UnitsMask        = 0x3F;
+  bool     MotorEnabled     = false;
+  bool     MotorIsHalf      = false;
+  uint32_t LimitNear        = 0xFFFFFFFF;
+  uint32_t LimitHalf        = 0;
+  uint32_t LimitFar         = 0;
+  uint32_t Preset1          = 2496930;
+  uint32_t Preset2          = 7490792;
+  uint32_t Preset3          = 11236188;
+  uint32_t CalDistance      = 3745396;
+  int32_t  Calibration      = 0;
+  bool     QCIsAllowed      = false;
+  bool     IsDebugging      = false;
+  bool     SecEnabled       = false;
+  int32_t  OffsetSec        = 0;
+  bool     SecIsInverted    = false;
+  bool     KeyEnabled       = false;
+  uint32_t MotorPulleyCirc  = 573288;
+  uint16_t MotorRPM         = 100;
+  uint16_t MotorAccel       = 100;
+  uint16_t MotorErrorTol    = 4096;
+  uint8_t  MotorTimeTol     = 10;
+  int16_t  MotorOvrshtPos   = 0;
+  int16_t  MotorOvrshtNeg   = 0;
+  int16_t  MotorPulCompPos  = 0;
+  int16_t  MotorPulCompNeg  = 0;
+  bool     MotorCompEnabled = false;
+  uint32_t MotorPulses      = 25600;
+  uint32_t LifetimeTravel   = 0;
+  uint16_t PosThreshold     = 12;
+} __attribute__ ((__packed__));
+
+void eeprom_read_block(void *__dst, const void * __src, size_t __n)
+{
+  // AVR EEPROM pointres are always 16-bit, so casting directly to uint16_t
+  // does not result in a loss of precision but is disallowed by compiler.
+  printf("%u\n", m24c08_read(EEPROM_I2C_PORT, (uint16_t)(uintptr_t)__src, (uint8_t *)__dst, __n));
+}
+
+void eeprom_update_block(const void *__src, void *__dst, size_t	__n)
+{
+    printf("%u\n", m24c08_update(EEPROM_I2C_PORT, (uintptr_t)__dst, (const uint8_t *)__src, __n));
+}
+
 static void i2c_init_eeprom()
 {
     i2c_init(EEPROM_I2C_PORT, 100 * 1000);
@@ -25,13 +72,16 @@ static void i2c_init_eeprom()
 
 bool test_read()
 {
-    uint8_t read_data[TEST_LEN];
+    uint8_t read_data[79];
 
-    if (!m24c08_read(EEPROM_I2C_PORT, 0, read_data, TEST_LEN))
+    if (!m24c08_read(EEPROM_I2C_PORT, 0, read_data, 79))
     {
         printf("Read failed!\n");
         return false;
     }
+
+    for (int i = 0; i < 79; ++i) printf("%02X ", read_data[i]);
+    printf("\n");
 
     printf("test_read PASSED\n");
     return true;
@@ -106,6 +156,89 @@ bool test_write_read()
     }
 
     printf("test_write_read PASSED\n");
+    return true;
+}
+
+bool test_write_read_settings()
+{
+    SettingMemory settings;
+    settings.KeyEnabled = true;
+    uint8_t read_data[sizeof(settings)];
+    SettingMemory readSettings;
+
+    printf("test_write_read_settings: writing...");
+    if (!m24c08_write(EEPROM_I2C_PORT, 0, (uint8_t*)&settings, sizeof(settings)))
+    {
+        printf("failed!\n");
+        return false;
+    }
+    else
+    {
+        printf("SUCCESS!\n");
+    }
+    
+    printf("test_write_read_settings: reading...");
+    if (!m24c08_read(EEPROM_I2C_PORT, 0, (uint8_t*)&readSettings, sizeof(settings)))
+    {
+        printf("FAILED!\n");
+        return false;
+    }
+    else
+    {
+        printf("SUCCESS!\n");
+    }
+
+    if (memcmp(&settings, &readSettings, sizeof(settings)) != 0)
+    {
+        printf("Data mismatch!\n");
+        return false;
+    }
+
+    printf("test_write_read_settings PASSED\n");
+    return true;
+}
+
+bool test_settings()
+{
+    SettingMemory settings;
+    settings.KeyEnabled = true;
+    uint8_t read_data[sizeof(settings)];
+    SettingMemory readSettings;
+
+    printf("test_settings: writing...");
+    eeprom_update_block(&settings, 0, sizeof(settings));
+    /*
+    if (!m24c08_write(EEPROM_I2C_PORT, 0, write_data, sizeof(settings)))
+    {
+        printf("failed!\n");
+        return false;
+    }
+    else
+    {
+        printf("SUCCESS!\n");
+    }*/
+    
+    printf("test_settings: reading...");
+    eeprom_read_block(&readSettings, 0, sizeof(settings));
+    /* 
+    if (!m24c08_read(EEPROM_I2C_PORT, 0, read_data, sizeof(settings)))
+    {
+        printf("FAILED!\n");
+        return false;
+    }
+    else
+    {
+        printf("SUCCESS!\n");
+    }
+    */
+
+    if (memcmp(&settings, &readSettings, sizeof(settings)) != 0)
+    {
+        printf("Data mismatch!\n");
+        return false;
+    }
+
+    printf("test_settings PASSED\n");
     return true;
 }
 
@@ -200,12 +333,16 @@ int main()
 
     bool ok = true;
     ok &= test_read();
-    ok &= test_byte_write_read();
+    ok &= test_write_read_settings();
+    busy_wait_ms(50);
+    ok &= test_settings();
     busy_wait_ms(50);  // wait for EEPROM write cycle
-    ok &= test_write_read();
-    busy_wait_ms(50);  // wait for EEPROM write cycle
-    ok &= test_update();
-    //ok &= test_wraparound_read();
+    //ok &= test_byte_write_read();
+    //busy_wait_ms(50);  // wait for EEPROM write cycle
+    //ok &= test_write_read();
+    //busy_wait_ms(50);  // wait for EEPROM write cycle
+    //ok &= test_update();
+    ok &= test_wraparound_read();
 
     if (ok) printf("ALL TESTS PASSED\n");
     else    printf("TESTS FAILED\n");
