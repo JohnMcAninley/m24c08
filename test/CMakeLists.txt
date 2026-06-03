@@ -3,9 +3,9 @@ add_executable(m24c08_test
     ../m24c08.cpp
 )
 
-target_link_libraries(m24c08_test pico_stdlib hardware_i2c)
+target_include_directories(m24c08_test PRIVATE ..)
 
-include_directories(..)
+target_link_libraries(m24c08_test pico_stdlib hardware_i2c)
 
 pico_enable_stdio_usb(m24c08_test 1)
 pico_enable_stdio_uart(m24c08_test 0)
